@@ -11,6 +11,7 @@ module;
 #include <filesystem>
 #include <mutex>
 #include <atomic>
+#include <ctime>
 #ifdef _WIN32
 #include <process.h>
 #else
@@ -102,11 +103,18 @@ std::string getTimeString()
 {
     using namespace std::chrono;
     const auto now = system_clock::now();
-    const zoned_time zt{current_zone(), now};
-    const auto local_tp = zt.get_local_time();
-    const auto sec_tp = floor<seconds>(local_tp);
-    const auto ms = duration_cast<milliseconds>(local_tp - sec_tp).count();
-    return std::format("{:%F %T}.{:03}", sec_tp, ms);
+    const auto sec_tp = floor<seconds>(now);
+    const auto ms = duration_cast<milliseconds>(now - sec_tp).count();
+    std::time_t tt = system_clock::to_time_t(now);
+    std::tm tm{};
+#ifdef _WIN32
+    localtime_s(&tm, &tt);
+#else
+    localtime_r(&tt, &tm);
+#endif
+    char buf[32];
+    std::strftime(buf, sizeof(buf), "%F %T", &tm);
+    return std::format("{}.{:03}", buf, ms);
 }
 
 std::string levelToString(logger::LogLevel level)
@@ -224,10 +232,16 @@ void Logger::rotateIfNeeded(const std::string& channel)
     s_ofstreamMap.erase(it);
     using namespace std::chrono;
     const auto now = system_clock::now();
-    const zoned_time zt{current_zone(), now};
-    const auto local_tp = zt.get_local_time();
-    const auto sec_tp = floor<seconds>(local_tp);
-    const std::string timestamp = std::format("{:%Y%m%d%H%M%S}", sec_tp);
+    std::time_t tt = system_clock::to_time_t(now);
+    std::tm tm{};
+#ifdef _WIN32
+    localtime_s(&tm, &tt);
+#else
+    localtime_r(&tt, &tm);
+#endif
+    char buf[32];
+    std::strftime(buf, sizeof(buf), "%Y%m%d%H%M%S", &tm);
+    const std::string timestamp = buf;
     const std::string baseName = s_logPath + "/" + channel + ".log";
     const std::string oldDir = s_logPath + "/old";
     std::error_code ec;

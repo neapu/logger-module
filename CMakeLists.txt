@@ -12,4 +12,6 @@ target_sources(logger
 
 set_target_properties(logger PROPERTIES
     CXX_STANDARD 23
+    CXX_STANDARD_REQUIRED ON
+    CXX_SCAN_FOR_MODULES ON
 )
