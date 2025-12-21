@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 4.1)
 
-project(Logger LANGUAGES CXX)
+project(Logger VERSION 1.0.0 LANGUAGES CXX)
 
 add_library(logger)
 
