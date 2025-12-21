@@ -279,6 +279,18 @@ Logger LogDebug(const std::string& channel, const std::source_location& location
 {
     return Logger(LogLevel::DEBUG, channel, location);
 }
+Logger LogInfo(const std::string& channel, const std::source_location& location)
+{
+    return Logger(LogLevel::INFO, channel, location);
+}
+Logger LogWarn(const std::string& channel, const std::source_location& location)
+{
+    return Logger(LogLevel::WARN, channel, location);
+}
+Logger LogError(const std::string& channel, const std::source_location& location)
+{
+    return Logger(LogLevel::ERROR, channel, location);
+}
 FunctionTracer::FunctionTracer(LogLevel level, const std::string& channel, const std::source_location& location)
     : m_level(level), m_channel(channel), m_location(location)
 {
