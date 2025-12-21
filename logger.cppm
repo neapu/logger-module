@@ -90,7 +90,6 @@ private:
 };
 }
 
-module: private;
 unsigned long getProcessId()
 {
 #ifdef _WIN32
