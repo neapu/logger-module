@@ -3,8 +3,6 @@ module;
 #include <iostream>
 #include <string>
 #include <string_view>
-#include <locale>
-#include <codecvt>
 #include <format>
 #include <source_location>
 #include <chrono>
@@ -13,9 +11,12 @@ module;
 #include <filesystem>
 #include <mutex>
 #include <atomic>
-#include <type_traits>
 #include <ctime>
 #ifdef _WIN32
+// #ifndef CP_UTF8
+// #define CP_UTF8 65001u
+// #endif
+#include <stringapiset.h>
 #include <process.h>
 #else
 #include <unistd.h>
@@ -23,6 +24,10 @@ module;
 #include <thread>
 
 export module Logger;
+
+// #ifdef _WIN32
+// extern "C" __declspec(dllimport) int __stdcall WideCharToMultiByte(unsigned int, unsigned long, const wchar_t*, int, char*, int, const char*, int*);
+// #endif
 
 export namespace logger {
 enum class LogLevel {
@@ -41,9 +46,11 @@ public:
     Logger& operator<<(const char* s);
     Logger& operator<<(std::string_view sv);
     Logger& operator<<(const std::string& s);
+#ifdef _WIN32
     Logger& operator<<(const wchar_t* ws);
     Logger& operator<<(std::wstring_view wsv);
     Logger& operator<<(const std::wstring& ws);
+#endif
     template <class T>
         requires (!std::is_same_v<std::remove_cvref_t<T>, std::wstring>
                && !std::is_same_v<std::remove_cvref_t<T>, std::wstring_view>
@@ -62,15 +69,24 @@ public:
         m_data << std::string_view(formatted);
         return *this;
     }
+#ifdef _WIN32
     template<typename... Args>
     Logger& format_w(std::wformat_string<Args...> fmt, Args&&... args)
     {
         auto formatted = std::format(fmt, std::forward<Args>(args)...);
-        std::wstring_view wsv(formatted);
-        std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> conv;
-        m_data << conv.to_bytes(wsv.data(), wsv.data() + wsv.size());
+        const wchar_t* data = formatted.c_str();
+        int len = static_cast<int>(formatted.size());
+        int needed = ::WideCharToMultiByte(CP_UTF8, 0, data, len, nullptr, 0, nullptr, nullptr);
+        if (needed > 0) {
+            std::string out(static_cast<size_t>(needed), '\0');
+            int written = ::WideCharToMultiByte(CP_UTF8, 0, data, len, out.data(), needed, nullptr, nullptr);
+            if (written > 0) {
+                m_data.write(out.data(), static_cast<std::streamsize>(out.size()));
+            }
+        }
         return *this;
     }
+#endif
 
     static void setLogPath(const std::string& path);
     static void openNewFile(const std::string& channel);
@@ -148,6 +164,8 @@ std::string levelToString(logger::LogLevel level)
     }
 }
 
+// helper is inlined at call sites to avoid exporting non-API symbols in BMI
+
 namespace logger {
 std::string Logger::s_logPath{};
 std::map<std::string, std::ofstream> Logger::s_ofstreamMap{};
@@ -207,12 +225,19 @@ Logger& Logger::operator<<(const std::string& s)
     m_data.write(s.data(), static_cast<std::streamsize>(s.size()));
     return *this;
 }
+#ifdef _WIN32
 Logger& Logger::operator<<(const wchar_t* ws)
 {
     if (ws) {
-        std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> conv;
-        auto bytes = conv.to_bytes(ws);
-        m_data.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+        std::wstring_view wsv(ws);
+        int needed = ::WideCharToMultiByte(CP_UTF8, 0, wsv.data(), static_cast<int>(wsv.size()), nullptr, 0, nullptr, nullptr);
+        if (needed > 0) {
+            std::string out(static_cast<size_t>(needed), '\0');
+            int written = ::WideCharToMultiByte(CP_UTF8, 0, wsv.data(), static_cast<int>(wsv.size()), out.data(), needed, nullptr, nullptr);
+            if (written > 0) {
+                m_data.write(out.data(), static_cast<std::streamsize>(out.size()));
+            }
+        }
     } else {
         m_data << "(null)";
     }
@@ -220,18 +245,30 @@ Logger& Logger::operator<<(const wchar_t* ws)
 }
 Logger& Logger::operator<<(std::wstring_view wsv)
 {
-    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> conv;
-    auto bytes = conv.to_bytes(wsv.data(), wsv.data() + wsv.size());
-    m_data.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    int needed = ::WideCharToMultiByte(CP_UTF8, 0, wsv.data(), static_cast<int>(wsv.size()), nullptr, 0, nullptr, nullptr);
+    if (needed > 0) {
+        std::string out(static_cast<size_t>(needed), '\0');
+        int written = ::WideCharToMultiByte(CP_UTF8, 0, wsv.data(), static_cast<int>(wsv.size()), out.data(), needed, nullptr, nullptr);
+        if (written > 0) {
+            m_data.write(out.data(), static_cast<std::streamsize>(out.size()));
+        }
+    }
     return *this;
 }
 Logger& Logger::operator<<(const std::wstring& ws)
 {
-    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> conv;
-    auto bytes = conv.to_bytes(ws.data(), ws.data() + ws.size());
-    m_data.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    std::wstring_view wsv(ws);
+    int needed = ::WideCharToMultiByte(CP_UTF8, 0, wsv.data(), static_cast<int>(wsv.size()), nullptr, 0, nullptr, nullptr);
+    if (needed > 0) {
+        std::string out(static_cast<size_t>(needed), '\0');
+        int written = ::WideCharToMultiByte(CP_UTF8, 0, wsv.data(), static_cast<int>(wsv.size()), out.data(), needed, nullptr, nullptr);
+        if (written > 0) {
+            m_data.write(out.data(), static_cast<std::streamsize>(out.size()));
+        }
+    }
     return *this;
 }
+#endif
 void Logger::setLogPath(const std::string& path)
 {
     s_logPath = path;
