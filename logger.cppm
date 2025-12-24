@@ -3,6 +3,8 @@ module;
 #include <iostream>
 #include <string>
 #include <string_view>
+#include <locale>
+#include <codecvt>
 #include <format>
 #include <source_location>
 #include <chrono>
@@ -11,6 +13,7 @@ module;
 #include <filesystem>
 #include <mutex>
 #include <atomic>
+#include <type_traits>
 #include <ctime>
 #ifdef _WIN32
 #include <process.h>
@@ -38,7 +41,14 @@ public:
     Logger& operator<<(const char* s);
     Logger& operator<<(std::string_view sv);
     Logger& operator<<(const std::string& s);
+    Logger& operator<<(const wchar_t* ws);
+    Logger& operator<<(std::wstring_view wsv);
+    Logger& operator<<(const std::wstring& ws);
     template <class T>
+        requires (!std::is_same_v<std::remove_cvref_t<T>, std::wstring>
+               && !std::is_same_v<std::remove_cvref_t<T>, std::wstring_view>
+               && !std::is_same_v<std::remove_cvref_t<T>, const wchar_t*>
+               && !std::is_same_v<std::remove_cvref_t<T>, wchar_t*>)
     Logger& operator<<(T&& t)
     {
         m_data << std::forward<T>(t);
@@ -50,6 +60,15 @@ public:
     {
         auto formatted = std::format(fmt, std::forward<Args>(args)...);
         m_data << std::string_view(formatted);
+        return *this;
+    }
+    template<typename... Args>
+    Logger& format_w(std::wformat_string<Args...> fmt, Args&&... args)
+    {
+        auto formatted = std::format(fmt, std::forward<Args>(args)...);
+        std::wstring_view wsv(formatted);
+        std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> conv;
+        m_data << conv.to_bytes(wsv.data(), wsv.data() + wsv.size());
         return *this;
     }
 
@@ -186,6 +205,31 @@ Logger& Logger::operator<<(std::string_view sv)
 Logger& Logger::operator<<(const std::string& s)
 {
     m_data.write(s.data(), static_cast<std::streamsize>(s.size()));
+    return *this;
+}
+Logger& Logger::operator<<(const wchar_t* ws)
+{
+    if (ws) {
+        std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> conv;
+        auto bytes = conv.to_bytes(ws);
+        m_data.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    } else {
+        m_data << "(null)";
+    }
+    return *this;
+}
+Logger& Logger::operator<<(std::wstring_view wsv)
+{
+    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> conv;
+    auto bytes = conv.to_bytes(wsv.data(), wsv.data() + wsv.size());
+    m_data.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    return *this;
+}
+Logger& Logger::operator<<(const std::wstring& ws)
+{
+    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> conv;
+    auto bytes = conv.to_bytes(ws.data(), ws.data() + ws.size());
+    m_data.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
     return *this;
 }
 void Logger::setLogPath(const std::string& path)
